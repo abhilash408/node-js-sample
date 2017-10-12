@@ -21,7 +21,7 @@ pipeline {
 				subject: "FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
 				body: """<p>FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' : </p>
 					<p>Something went wrong, Please Check the build log attached for errors </p>""",
-				attachLog: true, from: 'Abhilash.Eleti@universalorlando.com', replyTo: 'donotreply@universalorlando.com', to: 'Abhilash.Eleti@universalorlando.com'
+				attachLog: true, from: 'Abhilash.Eleti.com', replyTo: 'donotreply.com', to: 'Abhilash.Eleti.com'
 				)
 			}
 		}	
