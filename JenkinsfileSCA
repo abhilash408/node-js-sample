@@ -1,0 +1,66 @@
+pipeline {
+	agent {
+		node { label 'Linux' // allocate a node/slave ex: '' or '' or 'master'
+			}
+		}			
+	stages {				
+		stage('Build') {
+            steps { // Specify nodejs version
+						nodejs(nodeJSInstallationName:'NodeJS6.9.1') { 			
+						sh ' mkdir ${WORKSPACE}/dlnpm '	
+						sh ' npm config set tmp ${WORKSPACE}/dlnpm '
+						sh ' chmod 755 jenkins/prstatus/*.sh'
+						sh './jenkins/prstatus/eslintprps.sh'
+						sh 'npm install' //Install npm packages and Run grunt build
+						// stash includes: './**/*', name: 'workspacesources'
+					}
+				}
+			}
+		stage('Linting') {
+            steps { // Specify nodejs version
+						nodejs(nodeJSInstallationName:'NodeJS6.9.1') {
+						//Run Static Code Analysis using Eslint, htmllint,Csslint
+						// Generating ESLINT HTML Report   
+						sh './node_modules/.bin/eslint -f html ./app/assets/js/**/* >eslint.html || echo "Linting failed/Success, continuing..." '
+						// Generating CheckStyle Reports
+						sh './node_modules/.bin/eslint -f checkstyle ./app/assets/js/**/* >eslint.xml || echo "Linting failed/Success, continuing..." '
+						// ESLINT, CSS, HTML Lint 
+						sh 'npm run lint || echo " continuing to skip errors..." '
+						//sh './node_modules/.bin/eslint -f junit ./app/assets/js/**/* >junit.xml || echo "Linting failed/Success, continuing..." '
+						// stash includes: './**/*', name: 'workspacesources'
+						publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: '', reportFiles: 'eslint.html', reportName: 'ESLint Report', reportTitles: ''])
+						checkstyle canComputeNew: false, defaultEncoding: '', healthy: '', pattern: 'eslint.xml', unHealthy: ''
+						sh './jenkins/prstatus/eslintprus.sh'
+					}
+				}
+			}	
+			
+		}
+		
+	post {
+
+		always{ 					
+		deleteDir()	
+		}
+		failure {	
+			emailext (
+				subject: "FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+				body: """<p>FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' : </p>
+					<p>Something went wrong, Please Check the build log attached for errors </p>""",
+				attachLog: true, from: 'Abhilash.ElLETI.com', replyTo: 'donotreply.com', to: 'Abhilash.Eleti.com'
+				)
+			}
+		}	
+
+	// The options directive is for configuration that applies to the whole job.
+	options {
+			// For example, we'd like to make sure we only keep 10 builds at a time, so
+			// we don't fill up our storage!
+		buildDiscarder(logRotator(numToKeepStr:'10'))
+    
+			// And we'd really like to be sure that this build doesn't hang forever, so
+			// let's time it out after an hour.
+		timeout(time: 60, unit: 'MINUTES')
+		}
+		
+	}
