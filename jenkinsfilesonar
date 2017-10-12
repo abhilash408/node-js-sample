@@ -1,6 +1,6 @@
 pipeline {
 	agent {
-		node { label 'Linux' // allocate a node/slave ex: 'USOR7PJKS01' or 'USOR7PJKS02' or 'master'
+		node { label 'Linux' // allocate a node/slave ex: '' or '' or 'master'
 			}
 		}				
 	stages {				
@@ -65,7 +65,7 @@ pipeline {
                 success {
 	                step([$class: 'GitHubCommitStatusSetter',
 		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'SonarQube Analysis'],
-							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: 'http://usor7psonar01.use.ucdp.net:9000/dashboard?id=UO_WEB_ICE'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: 'http://SONAR.net:9000/dashboard?id=UO_WEB_ICE'],
 		                    statusResultSource: [$class: 'ConditionalStatusResultSource', 
 		                    results: [[$class: 'AnyBuildResult', message: 'Yay ! Successful', result: 'SUCCESS', state: 'SUCCESS']]]
 		                    ])
@@ -73,7 +73,7 @@ pipeline {
                 failure {
 	                step([$class: 'GitHubCommitStatusSetter',
 		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'SonarQube Analysis'],
-							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: 'http://usor7psonar01.use.ucdp.net:9000/dashboard?id=UO_WEB_ICE'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: 'http://sonar01.net:9000/dashboard?id=UO_WEB_ICE'],
 		                    statusResultSource: [$class: 'ConditionalStatusResultSource', 
 		                    results: [[$class: 'AnyBuildResult', message: 'Failed', result: 'UNSTABLE', state: 'FAILURE']]]
 		                    ])
@@ -128,7 +128,7 @@ pipeline {
 				subject: "FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
 				body: """<p>FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' : </p>
 					<p>Some one broke the build. Please Check the build log attached for errors </p>""",
-				attachLog: true, from: 'Abhilash.Eleti@universalorlando.com', replyTo: 'donotreply@universalorlando.com', to: 'Abhilash.Eleti@universalorlando.com'
+				attachLog: true, from: 'Abhilash.Eleti@.com', replyTo: 'donotreply@.com', to: 'Abhilash.Eleti@.com'
 				)
 			}
 		}	
