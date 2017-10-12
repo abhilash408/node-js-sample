@@ -1,0 +1,40 @@
+pipeline {
+	agent {
+			node { label 'Linux'
+			}
+		}
+	stages {	
+		stage('Trigger Down stream build job') 
+			{
+            steps {	
+					build job: 'UO_WEB_ICE', quietPeriod: 2
+				}
+			}			
+		}
+	post {
+
+		always{ 					
+		deleteDir()	
+		}
+		failure {	
+			emailext (
+				subject: "FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+				body: """<p>FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' : </p>
+					<p>Something went wrong, Please Check the build log attached for errors </p>""",
+				attachLog: true, from: 'Abhilash.Eleti@universalorlando.com', replyTo: 'donotreply@universalorlando.com', to: 'Abhilash.Eleti@universalorlando.com'
+				)
+			}
+		}	
+
+	// The options directive is for configuration that applies to the whole job.
+	options {
+			// For example, we'd like to make sure we only keep 10 builds at a time, so
+			// we don't fill up our storage!
+		buildDiscarder(logRotator(numToKeepStr:'10'))
+    
+			// And we'd really like to be sure that this build doesn't hang forever, so
+			// let's time it out after an hour.
+		timeout(time: 60, unit: 'MINUTES')
+		}
+		
+	}
