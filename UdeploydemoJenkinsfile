@@ -1,0 +1,102 @@
+pipeline {
+	agent {
+			node { label 'Linux'
+			}
+		}			
+	stages {				
+
+		stage('Checkout ') {
+			steps {
+					git branch: 'ng2/demo', 
+					credentialsId: 'dsghfkshf32675khdkj7684g367', 
+					url: 'https://github.com/repository/branch'
+					}
+				}	
+		stage('Build') {
+            steps {	
+						nodejs(nodeJSInstallationName:'NodeJS6.9.1') {
+						sh 'npm install'
+						sh 'mkdir tarfiles'
+					}
+				}
+			}			
+		stage('TAR Code') {
+            steps {	
+						nodejs(nodeJSInstallationName:'NodeJS6.9.1') 
+					{
+						sh ' tar -czvf ./tarfiles/k2-$(date +%Y%m%d%H%M%S)-${BUILD_ID}.tgz . --exclude "jenkins" --exclude "tarfiles"'
+						//sh ' echo "sleep 60 seconds"; sleep 60; echo "wait for 60 seconds completed" '
+						archiveArtifacts artifacts: 'tarfiles/*.tgz',  excludes: 'tarfiles', fingerprint: true, onlyIfSuccessful: true
+
+					}
+				}
+			}	
+		stage('Publish TO ucdeploy') {
+            steps {	
+						nodejs(nodeJSInstallationName:'NodeJS6.9.1') 
+					{
+					step([$class: 'UCDeployPublisher',
+							siteName: 'UCDserver',
+							component: [
+								$class: 'com.urbancode.jenkins.plugins.ucdeploy.VersionHelper$VersionBlock',
+								componentName: 'UO-WEB-TEST',
+								delivery: [
+									$class: 'com.urbancode.jenkins.plugins.ucdeploy.DeliveryHelper$Push',
+									pushVersion: '${BUILD_NUMBER}',
+									baseDir: '/var/lib/jenkins/workspace/WEB_ICE/TestJobs/K2_TAR_Deploy/tarfiles/',
+									fileIncludePatterns: '*${BUILD_ID}.tgz',
+									fileExcludePatterns: '',
+									pushProperties: 'jenkins.server=Local\njenkins.reviewed=false',
+									pushDescription: 'Pushed from Jenkins',
+									pushIncremental: false
+								]
+							]
+						])
+					}
+				}
+			}
+
+		stage('Trigger ucdeploy Job') {
+            steps {	
+						nodejs(nodeJSInstallationName:'NodeJS6.9.1') 
+					{
+					   step([$class: 'UCDeployPublisher',
+							siteName: 'UCDserver',
+							deploy: [
+								$class: 'com.urbancode.jenkins.plugins.ucdeploy.DeployHelper$DeployBlock',
+								deployApp: 'UO-WEB-TEST',
+								deployEnv: 'DEV',
+								deployProc: 'Install K2 Services-PM2',
+								deployVersions: 'UO-WEB-TEST:${BUILD_NUMBER}',
+								deployOnlyChanged: false
+							]
+						])
+					}
+				}
+			}			
+			
+		}
+		
+	post {
+
+		always{ 					
+		deleteDir()	
+		}
+
+		failure {	
+			emailext (
+				subject: "FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+				body: """<p>FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' : </p>
+					<p>Some one broke the build. Please Check the build log attached for errors </p>""",
+				attachLog: true, from: 'Abhilash.Eleti@universalorlando.com', replyTo: 'donotreply@universalorlando.com', to: 'Abhilash.Eleti@universalorlando.com'
+				)
+			}
+		}	
+	options {
+		buildDiscarder(logRotator(numToKeepStr:'10'))
+		timeout(time: 60, unit: 'MINUTES')
+  }
+		
+}
+
+
