@@ -1,0 +1,263 @@
+#!/usr/bin/env groovy
+pipeline
+	{
+	agent { label 'Windows' }
+	// The options directive is for configuration that applies to the whole job.
+	options {
+			// For example, we'd like to make sure we only keep 10 builds at a time, so
+			// we don't fill up our storage!
+		buildDiscarder(logRotator(numToKeepStr:'10'))
+
+			// And we'd really like to be sure that this build doesn't hang forever, so
+			// let's time it out after an hour.
+		timeout(time: 60, unit: 'MINUTES')
+		}
+	stages {
+		stage('Checkout') {
+            steps {	
+					checkout([$class: 'GitSCM', branches: [[name: '*/develop']], 
+								doGenerateSubmoduleConfigurations: false, 
+								extensions: [[$class: 'CleanBeforeCheckout']], 
+								submoduleCfg: [], 
+								userRemoteConfigs: [[credentialsId: 'credential', url: 'https://github.com/project']]])
+					}
+
+			post {
+                success {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'CodeCheckout'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Successful', result: 'SUCCESS', state: 'SUCCESS']]]
+		                    ])
+	                    }
+                failure {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'CodeCheckout'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Failed', result: 'UNSTABLE', state: 'FAILURE']]]
+		                    ])
+	                    }
+                    }
+				}	
+	
+	
+		stage('NugetRestore') {
+            steps {	
+						bat 'D:\\_Install\\.nuget\\nuget restore projectpackages.sln '
+					}
+
+			post {
+                success {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'NugetRestore'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Successful', result: 'SUCCESS', state: 'SUCCESS']]]
+		                    ])
+	                    }
+                failure {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'NugetRestore'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Failed', result: 'UNSTABLE', state: 'FAILURE']]]
+		                    ])
+	                    }
+                    }
+				}
+
+		stage('MSBuild and SonarQube analysis begin') {
+					steps{						
+					withSonarQubeEnv('SonarQube6.5-Linux') {
+						timeout(time: 1, unit: 'HOURS') {
+						bat '"D:\\Jenkins\\tools\\hudson.plugins.sonar.MsBuildSQRunnerInstallation\\MSBUILD_Scanner_3.0.2.656\\SonarQube.Scanner.MSBuild.exe" begin /k:"projectName" /n:"projectName" /v:"2.12.1.%BUILD_ID%"  /d:sonar.sourceEncoding="UTF-8" /d:sonar.host.url=%SONAR_HOST_URL% /d:sonar.login=%SONAR_AUTH_TOKEN% /d:sonar.ws.timeout=300 /d:sonar.language=cs /d:sonar.cs.opencover.reportsPaths="opencover.xml" /d:sonar.cs.vstest.reportsPaths="TestResults.trx" '
+						bat '"C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Community\\MSBuild\\15.0\\Bin\\MSBuild.exe" projectpackages.sln /p:StyleCopEnabled=true /p:Configuration=Release /verbosity:q '						
+							} 
+						}
+					}
+
+			post {
+                success {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'MSBuild and SonarQube analysis begin '],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Successful', result: 'SUCCESS', state: 'SUCCESS']]]
+		                    ])
+	                    }
+                failure {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'MSBuild and SonarQube analysis begin'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Failed', result: 'UNSTABLE', state: 'FAILURE']]]
+		                    ])
+	                    }
+                    }
+				}				
+		stage('UnitTest') {
+            steps {	
+						bat '"C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Community\\Common7\\IDE\\mstest.exe" /testcontainer:projectName.ViewModel.UnitTests\\bin\\x86\\Release\\prn.projectName.ViewModel.UnitTests.dll  /testcontainer:projectName.UnitTests\\bin\\x86\\Release\\prn.projectName.UnitTests.dll /resultsfile:TestResults.trx'
+						step([$class: 'MSTestPublisher', testResultsFile: 'TestResults.trx'])
+					}
+
+			post {
+                success {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'UnitTest'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}/testReport/'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Successful', result: 'SUCCESS', state: 'SUCCESS']]]
+		                    ])
+	                    }
+                failure {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'UnitTest'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Failed', result: 'UNSTABLE', state: 'FAILURE']]]
+		                    ])
+	                    }
+                    }
+				}				
+
+				
+		stage('OpenCover') {
+            steps {	
+						bat '"D:\\OpenCover\\OpenCover.Console.exe" -register:user -target:"C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Community\\Common7\\IDE\\mstest.exe"  -targetargs:"/testcontainer:projectName.ViewModel.UnitTests\\bin\\x86\\Release\\prn.projectName.ViewModel.UnitTests.dll  /testcontainer:ProjectName.UnitTests\\bin\\x86\\Release\\prn.ProjectName.UnitTests.dll " -filter:+[*]* -output:opencover.xml'
+					}
+
+			post {
+                success {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'OpenCover'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Successful', result: 'SUCCESS', state: 'SUCCESS']]]
+		                    ])
+	                    }
+                failure {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'OpenCover'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Failed', result: 'UNSTABLE', state: 'FAILURE']]]
+		                    ])
+	                    }
+                    }
+				}
+
+		stage('ReportGenerator') {
+            steps {	
+						bat '"D:\\ReportGenerator\\ReportGenerator.exe" -reports:"opencover.xml" -targetdir:"Reports" -reporttypes:Html'
+						publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: 'Reports', reportFiles: 'index.htm', reportName: 'HTML Report', reportTitles: ''])
+					}
+
+			post {
+                success {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ReportGenerator_test'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${JOB_URL}/HTML_Report/'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Successful', result: 'SUCCESS', state: 'SUCCESS']]]
+		                    ])
+	                    }
+                failure {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ReportGenerator'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Failed', result: 'UNSTABLE', state: 'FAILURE']]]
+		                    ])
+	                    }
+                    }
+				}	
+			
+
+			
+
+		stage('MSBuild SonarQube END') {
+					steps {		
+					withSonarQubeEnv('SonarQube6.5-Linux') {							
+						bat '"D:\\Jenkins\\tools\\hudson.plugins.sonar.MsBuildSQRunnerInstallation\\MSBUILD_Scanner_3.0.2.656\\SonarQube.Scanner.MSBuild.exe" end  '
+					}
+					}
+
+			post {
+                success {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'MSBuild SonarQube analysis end'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: ' ${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Successful', result: 'SUCCESS', state: 'SUCCESS']]]
+		                    ])
+	                    }
+                failure {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'MSBuild SonarQube analysis end'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Failed', result: 'UNSTABLE', state: 'FAILURE']]]
+		                    ])
+	                    }
+                    }
+				}	
+
+		stage('Quality Gate'){
+		      steps {
+			  script {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'Quality Gate '],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '${BUILD_URL}'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'In-progress', result: 'PENDING', state: 'PENDING']]]
+		                    ])
+			      sleep 60
+		          timeout(time: 1, unit: 'HOURS') { // Just in case something goes wrong, pipeline will be killed after a timeout
+                    def qg = waitForQualityGate() // Reuse taskId previously collected by withSonarQubeEnv
+					echo ""
+                    if (qg.status != "OK") {
+                     error "Pipeline aborted due to quality gate failure: ${qg.status}"
+							}
+						}
+					}
+				}
+			post {
+                success {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'Quality Gate'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: 'http://sonarserver:9000/dashboard?id=projectName'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Successful', result: 'SUCCESS', state: 'SUCCESS']]]
+		                    ])
+	                    }
+                failure {
+	                step([$class: 'GitHubCommitStatusSetter',
+		                    contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'Quality Gate'],
+							statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: 'http://sonarserver:9000/dashboard?id=projectName'],
+		                    statusResultSource: [$class: 'ConditionalStatusResultSource',
+		                    results: [[$class: 'AnyBuildResult', message: 'Failed', result: 'UNSTABLE', state: 'FAILURE']]]
+		                    ])
+	                    }
+                    }
+			}				
+				
+		}
+
+	post {
+
+		always{
+		deleteDir()
+		}
+		failure {
+			emailext (
+				subject: "FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+				body: """<p>FAILED  Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' : </p>
+					<p>Some one broke the build. Please Check the build log attached for errors </p>""",
+				attachLog: true, from: 'email@gmail.com', replyTo: 'donotreply@gmail.com', to: 'email@gmail.com'
+				)
+			}
+		}
+	}
